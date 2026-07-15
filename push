@@ -1,0 +1,8 @@
+git clone https://github.com/deagjerde/dnt-cabin-monitor.git
+cd dnt-cabin-monitor
+# Copy the files into this directory
+mkdir -p .github/workflows
+# ... place monitor.R, README.md, .github/workflows/monitor.yml ...
+git add .
+git commit -m "Add DNT cabin monitor"
+git push
