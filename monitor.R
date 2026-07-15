@@ -4,7 +4,7 @@
 # when a previously-booked date becomes available.
 #
 # Required environment variables:
-#   SMTP_HOST   e.g. smtp.yourprovider.com
+#   SMTP_HOST   e.g. smtp.office365.com
 #   SMTP_PORT   e.g. 587 (STARTTLS) or 465 (SSL)
 #   SMTP_USER   your email / SMTP username
 #   SMTP_PASS   your email password or app password
@@ -14,7 +14,6 @@
 suppressPackageStartupMessages({
   library(httr2)
   library(jsonlite)
-  library(emayili)
 })
 
 # ---- Configuration ----------------------------------------------------------
@@ -82,6 +81,98 @@ check_night <- function(arrival) {
   })
 }
 
+# ---- Email sending via curl SMTP -------------------------------------------
+
+send_notification_email <- function(new_dates) {
+  host <- Sys.getenv("SMTP_HOST")
+  port <- Sys.getenv("SMTP_PORT")
+  user <- Sys.getenv("SMTP_USER")
+  pass <- Sys.getenv("SMTP_PASS")
+  from <- Sys.getenv("EMAIL_FROM")
+  to   <- Sys.getenv("EMAIL_TO")
+
+  if (host == "" || to == "") {
+    cat("[WARN] SMTP credentials not set — skipping email.\n")
+    return(invisible())
+  }
+
+  # Build email body
+  date_lines <- sapply(new_dates, function(d) {
+    dt <- as.Date(d)
+    sprintf("  - %s", format_no_date(dt))
+  })
+  body <- paste0(
+    sprintf("%d ny(e) ledig(e) dato(er) for %s!\n\n", length(new_dates), CABIN_NAME),
+    paste(date_lines, collapse = "\n"),
+    "\n\nBestill her: ", CABIN_URL, "\n\n",
+    "--\n",
+    "Denne meldingen sendes automatisk hver 15. minutt ",
+    "naar nye datoer blir tilgjengelige."
+  )
+
+  subject <- sprintf("%s — %d ny(e) ledig(e) dato(er)!",
+                     CABIN_NAME, length(new_dates))
+
+  # Build raw email (RFC 5322 format)
+  email_content <- paste0(
+    "From: ", from, "\r\n",
+    "To: ", to, "\r\n",
+    "Subject: ", subject, "\r\n",
+    "Content-Type: text/plain; charset=UTF-8\r\n",
+    "\r\n",
+    body
+  )
+
+  # Write to temp file for curl to read
+  email_file <- tempfile(fileext = ".eml")
+  writeLines(email_content, email_file)
+
+  # Build curl SMTP URL
+  # Port 587 → STARTTLS (smtp://), port 465 → implicit SSL (smtps://)
+  if (port == "465") {
+    smtp_url <- sprintf("smtps://%s:%s", host, port)
+  } else {
+    smtp_url <- sprintf("smtp://%s:%s", host, port)
+  }
+
+  # Build curl command
+  curl_cmd <- sprintf(
+    'curl --ssl-reqd --url "%s" --mail-from "%s" --mail-rcpt "%s" --user "%s:%s" --upload-file "%s" --silent --show-error',
+    smtp_url, from, to, user, pass, email_file
+  )
+
+  cat(sprintf("[EMAIL] Sending notification to %s (%d new opening(s))...\n",
+              to, length(new_dates)))
+
+  result <- tryCatch({
+    system2("curl", args = c(
+      "--ssl-reqd",
+      "--url", smtp_url,
+      "--mail-from", from,
+      "--mail-rcpt", to,
+      "--user", paste0(user, ":", pass),
+      "--upload-file", email_file,
+      "--silent", "--show-error"
+    ), stderr = TRUE, stdout = TRUE)
+
+    status <- attr(result, "status")
+    if (is.null(status) || status == 0) {
+      cat(sprintf("[EMAIL] Sent successfully to %s\n", to))
+      TRUE
+    } else {
+      cat(sprintf("[ERROR] curl SMTP failed (exit %d): %s\n",
+                  status, paste(result, collapse = "\n")))
+      FALSE
+    }
+  }, error = function(e) {
+    cat(sprintf("[ERROR] Failed to send email: %s\n", conditionMessage(e)))
+    FALSE
+  })
+
+  unlink(email_file)
+  invisible(result)
+}
+
 # ---- Main -------------------------------------------------------------------
 
 main <- function() {
@@ -141,63 +232,6 @@ main <- function() {
   }
 
   cat("\nDone.\n")
-}
-
-send_notification_email <- function(new_dates) {
-  host <- Sys.getenv("SMTP_HOST")
-  port <- as.integer(Sys.getenv("SMTP_PORT"))
-  user <- Sys.getenv("SMTP_USER")
-  pass <- Sys.getenv("SMTP_PASS")
-  from <- Sys.getenv("EMAIL_FROM")
-  to   <- Sys.getenv("EMAIL_TO")
-
-  if (host == "" || to == "") {
-    cat("[WARN] SMTP credentials not set — skipping email.\n")
-    return(invisible())
-  }
-
-  # Build email body
-  date_lines <- sapply(new_dates, function(d) {
-    dt <- as.Date(d)
-    sprintf("  • %s", format_no_date(dt))
-  })
-  body <- paste0(
-    sprintf("%d ny(e) ledig(e) dato(er) for %s!\n\n", length(new_dates), CABIN_NAME),
-    paste(date_lines, collapse = "\n"),
-    "\n\nBestill her: ", CABIN_URL, "\n\n",
-    "—\n",
-    "Denne meldingen sendes automatisk hver 15. minutt ",
-    "når nye datoer blir tilgjengelige."
-  )
-
-  subject <- sprintf("%s — %d ny(e) ledig(e) dato(er)!",
-                     CABIN_NAME, length(new_dates))
-
-  # Determine TLS mode from port
-  # 587 → STARTTLS (upgrade after connect)
-  # 465 → implicit SSL
-  use_starttls <- (port == 587)
-
-  msg <- envelope() |>
-    from(from) |>
-    to(to) |>
-    subject(subject) |>
-    text(body)
-
-  tryCatch({
-    smtp <- server(
-      host = host,
-      port = port,
-      username = user,
-      password = pass,
-      use_starttls = use_starttls
-    )
-    smtp(msg)
-    cat(sprintf("[EMAIL] Sent notification to %s (%d new opening(s))\n",
-                to, length(new_dates)))
-  }, error = function(e) {
-    cat(sprintf("[ERROR] Failed to send email: %s\n", conditionMessage(e)))
-  })
 }
 
 # Run
