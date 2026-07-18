@@ -6,6 +6,11 @@ on:
     - cron: '*/15 * * * *'
   # Allow manual triggering for testing
   workflow_dispatch:
+    inputs:
+      test_email:
+        description: 'Send a test email only (skip availability check)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write  # needed to commit state.json back to repo
@@ -39,6 +44,7 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO:   ${{ secrets.EMAIL_TO }}
+          TEST_EMAIL: ${{ inputs.test_email }}
         run: Rscript monitor.R
 
       - name: Commit updated state
