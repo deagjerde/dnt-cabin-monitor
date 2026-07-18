@@ -176,6 +176,16 @@ send_notification_email <- function(new_dates) {
 # ---- Main -------------------------------------------------------------------
 
 main <- function() {
+  # Test mode: send a fake email to verify SMTP works, then exit
+  test_mode <- Sys.getenv("TEST_EMAIL") == "true"
+  if (test_mode) {
+    cat("[TEST MODE] Sending a test email to verify SMTP settings...\n")
+    fake_dates <- format(Sys.Date() + 7, "%Y-%m-%d")
+    send_notification_email(fake_dates)
+    cat("\nDone (test mode).\n")
+    return(invisible())
+  }
+
   today <- Sys.Date()
   dates <- seq(today, END_DATE, by = "day")
   cat(sprintf("[%s] Checking %d nights from %s to %s\n",
