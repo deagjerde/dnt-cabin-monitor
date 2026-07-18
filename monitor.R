@@ -145,7 +145,7 @@ send_notification_email <- function(new_dates) {
               to, length(new_dates)))
 
   result <- tryCatch({
-    system2("curl", args = c(
+    output <- system2("curl", args = c(
       "--ssl-reqd",
       "--url", smtp_url,
       "--mail-from", from,
@@ -155,13 +155,13 @@ send_notification_email <- function(new_dates) {
       "--silent", "--show-error"
     ), stderr = TRUE, stdout = TRUE)
 
-    status <- attr(result, "status")
+    status <- attr(output, "status")
     if (is.null(status) || status == 0) {
       cat(sprintf("[EMAIL] Sent successfully to %s\n", to))
       TRUE
     } else {
       cat(sprintf("[ERROR] curl SMTP failed (exit %d): %s\n",
-                  status, paste(result, collapse = "\n")))
+                  status, paste(output, collapse = "\n")))
       FALSE
     }
   }, error = function(e) {
