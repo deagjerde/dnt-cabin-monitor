@@ -1,6 +1,6 @@
 {
   "cabin_id": "101209",
   "cabin_name": "Fuglemyrhytta",
-  "last_check": "2026-08-18T14:11:49+0000",
-  "available_dates": "2026-08-24"
+  "last_check": "2026-08-18T19:30:52+0000",
+  "available_dates": ["2026-08-24", "2026-09-07"]
 }
