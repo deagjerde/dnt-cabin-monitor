@@ -48,9 +48,14 @@ jobs:
         run: Rscript gastro_monitor.R
 
       - name: Commit updated state
+        if: inputs.test_email != true
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          if [ ! -f gastro_state.json ]; then
+            echo "::error::gastro_state.json was not created. Check that gastro_monitor.R exists in the repo root and contains the full script (not an empty file)."
+            exit 1
+          fi
           git pull --rebase
           git add gastro_state.json
           # Only commit if state file actually changed
