@@ -56,12 +56,21 @@ jobs:
             echo "::error::gastro_state.json was not created. Check that gastro_monitor.R exists in the repo root and contains the full script (not an empty file)."
             exit 1
           fi
-          git pull --rebase
           git add gastro_state.json
           # Only commit if state file actually changed
           if git diff --quiet --staged; then
             echo "No changes to gastro_state.json — skipping commit."
-          else
-            git commit -m "Update Le Benjamin availability state [skip ci]"
-            git push
+            exit 0
           fi
+          git commit -m "Update Le Benjamin availability state [skip ci]"
+          # Retry push: the DNT workflow may push at the same time
+          for i in 1 2 3; do
+            if git pull --rebase && git push; then
+              echo "State pushed."
+              exit 0
+            fi
+            echo "Push attempt $i failed — retrying in 10s..."
+            sleep 10
+          done
+          echo "::warning::Could not push state after 3 attempts. Next run will retry — no action needed."
+          exit 0
