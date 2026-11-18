@@ -1,5 +1,8 @@
 #!/usr/bin/env Rscript
 # Le Benjamin Booking Monitor — booking.gastroplanner.no/lebenjamin/t
+# Single-check version: the GitHub Actions workflow calls this script
+# once per cycle inside a 15-minute polling loop.
+#
 # Watches availability for a table of GUESTS people on TARGET_DATE and
 # sends an email the moment it becomes bookable.
 #
@@ -74,7 +77,7 @@ check_month <- function(month, guests) {
     body <- resp_body_string(resp) |> fromJSON(flatten = FALSE)
 
     if (is.null(body$result)) {
-      message("[WARN] Unexpected API response — treating as unavailable.")
+      message("[WARN] Unexpected API response.")
       return(NULL)
     }
 
@@ -175,42 +178,49 @@ main <- function() {
               format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
               PLACE_NAME, GUESTS, TARGET_DATE))
 
-  month_data <- check_month(TARGET_MONTH, GUESTS)
-
-  available_now <- FALSE
-  if (!is.null(month_data)) {
-    row <- month_data[month_data$date == format(TARGET_DATE, "%Y-%m-%d"), ]
-    if (nrow(row) > 0) {
-      available_now <- (row$status == 1)
-      cat(sprintf("  Status for %s (guests=%d): %s\n",
-                  TARGET_DATE, GUESTS,
-                  if (available_now) "LEDIG — kan bookes!" else "ikke tilgjengelig"))
-    } else {
-      cat("  [WARN] Target date not in API response.\n")
-    }
-  } else {
-    cat("  [WARN] No API data — skipping this cycle.\n")
-  }
-
-  # Load previous state
+  # Load previous state FIRST
   prev_available <- FALSE
-  if (file.exists(STATE_FILE)) {
+  first_run <- !file.exists(STATE_FILE)
+  if (!first_run) {
     state <- tryCatch(fromJSON(STATE_FILE), error = function(e) NULL)
     if (!is.null(state) && !is.null(state$available)) {
       prev_available <- isTRUE(state$available)
     }
   }
 
-  # Save updated state
-  new_state <- list(
-    restaurant   = RESTAURANT,
-    target_date  = format(TARGET_DATE, "%Y-%m-%d"),
-    guests       = GUESTS,
-    available    = available_now,
-    last_check   = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
-  )
-  writeLines(toJSON(new_state, auto_unbox = TRUE, pretty = TRUE), STATE_FILE)
-  cat(sprintf("State saved to %s\n", STATE_FILE))
+  month_data <- check_month(TARGET_MONTH, GUESTS)
+
+  # If the API call failed, leave state untouched (no false change)
+  if (is.null(month_data)) {
+    cat("[WARN] No API data — state untouched, no email sent.\n")
+    return(invisible())
+  }
+
+  available_now <- FALSE
+  row <- month_data[month_data$date == format(TARGET_DATE, "%Y-%m-%d"), ]
+  if (nrow(row) > 0) {
+    available_now <- (row$status == 1)
+    cat(sprintf("  Status for %s (guests=%d): %s\n",
+                TARGET_DATE, GUESTS,
+                if (available_now) "LEDIG — kan bookes!" else "ikke tilgjengelig"))
+  } else {
+    cat("  [WARN] Target date not in API response.\n")
+  }
+
+  # Write state ONLY when availability changed (or first run) so the
+  # workflow's git diff check can skip unchanged cycles
+  if (first_run || available_now != prev_available) {
+    new_state <- list(
+      restaurant  = RESTAURANT,
+      target_date = format(TARGET_DATE, "%Y-%m-%d"),
+      guests      = GUESTS,
+      available   = available_now
+    )
+    writeLines(toJSON(new_state, auto_unbox = TRUE, pretty = TRUE), STATE_FILE)
+    cat("Availability changed — state saved.\n")
+  } else {
+    cat("No change — state file untouched.\n")
+  }
 
   # Send email on transition from not-available to available
   # (also fires on the very first run if the table is already bookable)
