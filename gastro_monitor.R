@@ -31,7 +31,7 @@ PLACE_NAME   <- "Le Benjamin Bar & Bistro"
 BOOKING_URL  <- "https://booking.gastroplanner.no/lebenjamin/t"
 
 GUESTS       <- 4
-TARGET_DATE  <- as.Date("2026-12-12") # the date you want a table for
+TARGET_DATE  <- as.Date("2026-12-19") # the date you want a table for
 TARGET_MONTH <- format(TARGET_DATE, "%Y-%m")
 
 STATE_FILE <- "gastro_state.json"
