@@ -2,5 +2,5 @@
   "restaurant": "lebenjamin",
   "target_date": "2026-12-19",
   "guests": 4,
-  "available": true
+  "available": false
 }
